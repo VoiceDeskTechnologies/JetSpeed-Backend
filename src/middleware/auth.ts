@@ -34,3 +34,14 @@ export const requireAdmin: RequestHandler = (req, res, next) => {
   }
   next();
 };
+
+export const requireStaff: RequestHandler = async (req, res, next) => {
+  if (!isSupabaseConfigured) return next();
+  if (!req.user) return res.status(403).json({ error: 'Staff access required' });
+  if (env.adminEmails.includes((req.user.email ?? '').toLowerCase())) return next();
+  const { data: profile } = supabase ? await supabase.from('profiles').select('role').eq('id', req.user.id).maybeSingle() : { data: null };
+  if (profile?.role !== 'support' && profile?.role !== 'admin') {
+    return res.status(403).json({ error: 'Staff access required' });
+  }
+  next();
+};

@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
-import { optionalAuth, requireAdmin } from './middleware/auth';
+import { optionalAuth, requireAdmin, requireStaff } from './middleware/auth';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/requestLogger';
@@ -26,7 +26,7 @@ app.use('/api/v1/payment-receipts', paymentReceiptRouter);
 app.use('/api/v1/freight-webhooks', freightWebhookRouter);
 app.use('/api/v1/packages', packagesRouter);
 for (const resource of ['prealerts', 'invoices', 'payments', 'deliveries', 'admin']) {
-  app.use(`/api/v1/${resource}`, resource === 'admin' ? requireAdmin : (_req, _res, next) => next(), resourceRouter(resource));
+  app.use(`/api/v1/${resource}`, resource === 'admin' ? requireStaff : (_req, _res, next) => next(), resourceRouter(resource));
 }
 app.use(notFound);
 app.use(errorHandler);

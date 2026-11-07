@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { env, isSupabaseConfigured } from '../config/env';
-import { requireAdmin } from '../middleware/auth';
+import { requireStaff } from '../middleware/auth';
 
 export const paymentReceiptRouter = Router();
 
-paymentReceiptRouter.post('/:id/receipt', requireAdmin, async (req, res, next) => {
+paymentReceiptRouter.post('/:id/receipt', requireStaff, async (req, res, next) => {
   try {
     if (!isSupabaseConfigured || !env.supabaseServiceRoleKey || !env.resendApiKey) {
       return res.status(503).json({ error: 'Payment email delivery is not configured.' });
