@@ -15,6 +15,9 @@ export const env = {
   adminEmails: (process.env.ADMIN_EMAILS ?? '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean),
   rateLimitWindowMs: number(process.env.RATE_LIMIT_WINDOW_MS, 60_000),
   rateLimitMax: number(process.env.RATE_LIMIT_MAX, 100),
+  resendApiKey: process.env.RESEND_API_KEY,
+  emailFrom: process.env.EMAIL_FROM ?? 'JetSpeed Couriers <info@jetspeedcouriers.com>',
+  emailLogoUrl: process.env.EMAIL_LOGO_URL ?? '',
 };
 
 export const isSupabaseConfigured = Boolean(env.supabaseUrl && (env.supabaseServiceRoleKey || env.supabaseAnonKey));
