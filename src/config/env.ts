@@ -18,6 +18,7 @@ export const env = {
   resendApiKey: process.env.RESEND_API_KEY,
   emailFrom: process.env.EMAIL_FROM ?? 'JetSpeed Couriers <info@jetspeedcouriers.com>',
   emailLogoUrl: process.env.EMAIL_LOGO_URL ?? '',
+  freightWebhookSecret: process.env.FREIGHT_FORWARDER_WEBHOOK_SECRET,
 };
 
 export const isSupabaseConfigured = Boolean(env.supabaseUrl && (env.supabaseServiceRoleKey || env.supabaseAnonKey));

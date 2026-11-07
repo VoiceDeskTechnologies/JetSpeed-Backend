@@ -10,6 +10,7 @@ import { healthRouter } from './routes/health';
 import { packagesRouter } from './routes/packages';
 import { resourceRouter } from './routes/resourceRoutes';
 import { paymentReceiptRouter } from './routes/paymentReceipt';
+import { freightWebhookRouter } from './routes/freightWebhook';
 
 export const app = express();
 app.disable('x-powered-by');
@@ -22,6 +23,7 @@ app.use(optionalAuth);
 app.use('/health', healthRouter);
 app.use('/api/v1/health', healthRouter);
 app.use('/api/v1/payment-receipts', paymentReceiptRouter);
+app.use('/api/v1/freight-webhooks', freightWebhookRouter);
 app.use('/api/v1/packages', packagesRouter);
 for (const resource of ['prealerts', 'invoices', 'payments', 'deliveries', 'admin']) {
   app.use(`/api/v1/${resource}`, resource === 'admin' ? requireAdmin : (_req, _res, next) => next(), resourceRouter(resource));
