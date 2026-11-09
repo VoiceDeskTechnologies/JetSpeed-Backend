@@ -23,7 +23,7 @@ type ForwarderAccount = {
 
 export const freightWebhookRouter = Router();
 
-freightWebhookRouter.post('/accounts', async (req, res) => {
+freightWebhookRouter.post(['/accounts', '/customers'], async (req, res) => {
   const authorization = req.header('authorization')?.replace(/^Bearer\s+/i, '');
   if (!env.freightWebhookSecret || authorization !== env.freightWebhookSecret) {
     return res.status(401).json({ error: 'Invalid freight-forwarder webhook bearer token.' });
@@ -39,7 +39,18 @@ freightWebhookRouter.post('/accounts', async (req, res) => {
   const { data: authUsers, error: authError } = await client.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (authError) return res.status(502).json({ error: authError.message });
   const authUser = authUsers.users.find(user => user.email?.toLowerCase() === body.email!.toLowerCase());
-  if (!authUser) return res.status(422).json({ error: 'No JetSpeed account matches this email. The customer must sign up first.' });
+  if (!authUser) {
+    const { data: pending, error: pendingError } = await client.from('forwarder_customer_registrations').upsert({
+      email: body.email.toLowerCase(),
+      mailbox_number: body.mailboxNumber,
+      first_name: body.first_name ?? null,
+      last_name: body.last_name ?? null,
+      phone: (body as ForwarderAccount & { phone?: string }).phone ?? null,
+      pickup_location: body.pickupLocation ?? 'Top Hill, St Elizabeth',
+    }, { onConflict: 'email' }).select().single();
+    if (pendingError) return res.status(422).json({ error: pendingError.message });
+    return res.status(202).json({ message: 'Customer registration stored pending JetSpeed signup.', pending_account: pending });
+  }
   const fullName = [body.first_name, body.last_name].filter(Boolean).join(' ').trim();
   const { data, error } = await client.from('profiles').upsert({
     id: authUser.id,
