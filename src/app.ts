@@ -24,6 +24,7 @@ app.use('/health', healthRouter);
 app.use('/api/v1/health', healthRouter);
 app.use('/api/v1/payment-receipts', paymentReceiptRouter);
 app.use('/api/v1/freight-webhooks', freightWebhookRouter);
+app.use('/api/partner/v1/packages', freightWebhookRouter);
 app.use('/api/v1/packages', packagesRouter);
 for (const resource of ['prealerts', 'invoices', 'payments', 'deliveries', 'admin']) {
   app.use(`/api/v1/${resource}`, resource === 'admin' ? requireStaff : (_req, _res, next) => next(), resourceRouter(resource));

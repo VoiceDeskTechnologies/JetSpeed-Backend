@@ -19,6 +19,8 @@ export const env = {
   emailFrom: process.env.EMAIL_FROM ?? 'JetSpeed Couriers <info@jetspeedcouriers.com>',
   emailLogoUrl: process.env.EMAIL_LOGO_URL ?? '',
   freightWebhookSecret: process.env.FREIGHT_FORWARDER_WEBHOOK_SECRET,
+  freightForwarderBaseUrl: process.env.FREIGHT_FORWARDER_BASE_URL ?? 'https://api.trglobal.logisticsplug.com/internalCourierApi/api/v1/shipments',
+  freightForwarderApiToken: process.env.FREIGHT_FORWARDER_API_TOKEN,
 };
 
 export const isSupabaseConfigured = Boolean(env.supabaseUrl && (env.supabaseServiceRoleKey || env.supabaseAnonKey));
