@@ -91,7 +91,22 @@ freightWebhookRouter.post(['/', '/package-received'], async (req, res) => {
   const client = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
   const { data: profile, error: profileError } = await client.from('profiles').select('id,full_name,email,phone').eq('identifier_code', body.mailboxNumber).maybeSingle();
   if (profileError) return res.status(502).json({ error: profileError.message });
-  if (!profile) return res.status(422).json({ error: 'No JetSpeed customer matches mailboxNumber.' });
+  if (!profile) {
+    const { data: pending, error: pendingError } = await client.from('pending_forwarder_packages').upsert({
+      tracking_number: body.tracking_number,
+      mailbox_number: body.mailboxNumber,
+      air_way_bill: body.airWayBill ?? null,
+      weight: body.weight ?? null,
+      description: body.description ?? null,
+      package_value: body.package_value ?? null,
+      consignee: body.consignee ?? null,
+      vendor: body.vendor ?? null,
+      forwarder_status: body.status ?? null,
+      payload: body,
+    }, { onConflict: 'tracking_number' }).select().single();
+    if (pendingError) return res.status(422).json({ error: pendingError.message });
+    return res.status(202).json({ message: 'Package received and queued pending customer mailbox matching.', pending_package: pending });
+  }
   const existing = await client.from('packages').select('id,status').eq('tracking_number', body.tracking_number).maybeSingle();
   const rawStatus = body.status ?? 'RECEIVED_AT_WAREHOUSE';
   const packageRecord = {
