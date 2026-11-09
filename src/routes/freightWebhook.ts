@@ -13,8 +13,44 @@ type ForwarderPackage = {
   vendor?: string;
   status?: string;
 };
+type ForwarderAccount = {
+  first_name?: string;
+  last_name?: string;
+  email: string;
+  mailboxNumber: string;
+  pickupLocation?: string;
+};
 
 export const freightWebhookRouter = Router();
+
+freightWebhookRouter.post('/accounts', async (req, res) => {
+  const authorization = req.header('authorization')?.replace(/^Bearer\s+/i, '');
+  if (!env.freightWebhookSecret || authorization !== env.freightWebhookSecret) {
+    return res.status(401).json({ error: 'Invalid freight-forwarder webhook bearer token.' });
+  }
+  if (!isSupabaseConfigured || !env.supabaseServiceRoleKey) {
+    return res.status(503).json({ error: 'Supabase service access is not configured.' });
+  }
+  const body = req.body as Partial<ForwarderAccount>;
+  if (!body.email || !body.mailboxNumber) {
+    return res.status(400).json({ error: 'email and mailboxNumber are required.' });
+  }
+  const client = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
+  const { data: authUsers, error: authError } = await client.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (authError) return res.status(502).json({ error: authError.message });
+  const authUser = authUsers.users.find(user => user.email?.toLowerCase() === body.email!.toLowerCase());
+  if (!authUser) return res.status(422).json({ error: 'No JetSpeed account matches this email. The customer must sign up first.' });
+  const fullName = [body.first_name, body.last_name].filter(Boolean).join(' ').trim();
+  const { data, error } = await client.from('profiles').upsert({
+    id: authUser.id,
+    email: authUser.email,
+    full_name: fullName || authUser.user_metadata?.full_name || authUser.email,
+    identifier_code: body.mailboxNumber,
+    pickup_location: body.pickupLocation ?? 'Top Hill, St Elizabeth',
+  }).select('id,full_name,email,identifier_code,pickup_location').single();
+  if (error) return res.status(422).json({ error: error.message });
+  return res.status(200).json({ message: 'Account linked.', account: data });
+});
 
 const statusMap: Record<string, string> = {
   RECEIVED_AT_WAREHOUSE: 'received_at_miami',
