@@ -15,8 +15,9 @@ packageNotificationsRouter.post('/:packageId/warehouse-email', requireStaff, asy
     if (error || !packageRecord) return res.status(404).json({ error: 'Package not found.' });
     const [{ data: authUser }, { data: profile }] = await Promise.all([
       client.auth.admin.getUserById(packageRecord.customer_id),
-      client.from('profiles').select('full_name').eq('id', packageRecord.customer_id).single(),
+      client.from('profiles').select('full_name,shipment_status_emails').eq('id', packageRecord.customer_id).single(),
     ]);
+    if (profile?.shipment_status_emails === false) return res.status(202).json({ sent: false, skipped: true, reason: 'Customer disabled shipment status emails.' });
     const email = authUser.user?.email;
     if (!email) return res.status(422).json({ error: 'Customer email is not available.' });
     const firstName = (profile?.full_name || packageRecord.customer_name || 'Customer').split(/\s+/)[0];

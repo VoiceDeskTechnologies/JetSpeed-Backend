@@ -13,10 +13,12 @@ paymentReceiptRouter.post('/:id/receipt', requireStaff, async (req, res, next) =
     const adminClient = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
     const { data: payment, error: paymentError } = await adminClient.from('payments').select('id,amount,payment_type,customer_id,package_id').eq('id', req.params.id).single();
     if (paymentError || !payment) return res.status(404).json({ error: 'Payment not found.' });
-    const [{ data: authUser }, { data: packageRecord }] = await Promise.all([
+    const [{ data: authUser }, { data: packageRecord }, { data: profile }] = await Promise.all([
       adminClient.auth.admin.getUserById(payment.customer_id),
       adminClient.from('packages').select('tracking_number').eq('id', payment.package_id).single(),
+      adminClient.from('profiles').select('shipment_status_emails').eq('id', payment.customer_id).single(),
     ]);
+    if (profile?.shipment_status_emails === false) return res.status(202).json({ sent: false, skipped: true, reason: 'Customer disabled shipment status emails.' });
     const email = authUser.user?.email;
     if (!email) return res.status(422).json({ error: 'Customer email is not available.' });
     const tracking = packageRecord?.tracking_number ?? 'your package';
