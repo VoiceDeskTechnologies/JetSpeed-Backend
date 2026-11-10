@@ -13,6 +13,7 @@ import { paymentReceiptRouter } from './routes/paymentReceipt';
 import { freightWebhookRouter } from './routes/freightWebhook';
 import { freightAccountRouter } from './routes/freightAccount';
 import { packageNotificationsRouter } from './routes/packageNotifications';
+import { announcementsRouter } from './routes/announcements';
 
 export const app = express();
 app.disable('x-powered-by');
@@ -30,6 +31,7 @@ app.use('/api/partner/v1/packages', freightWebhookRouter);
 app.use('/api/partner/v1', freightWebhookRouter);
 app.use('/api/v1/freight-forwarder', freightAccountRouter);
 app.use('/api/v1/package-notifications', packageNotificationsRouter);
+app.use('/api/v1/announcements', announcementsRouter);
 app.use('/api/v1/packages', packagesRouter);
 for (const resource of ['prealerts', 'invoices', 'payments', 'deliveries', 'admin']) {
   app.use(`/api/v1/${resource}`, resource === 'admin' ? requireStaff : (_req, _res, next) => next(), resourceRouter(resource));
