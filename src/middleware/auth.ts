@@ -29,17 +29,26 @@ export const requireAuth: RequestHandler = (req, res, next) => {
 
 export const requireAdmin: RequestHandler = (req, res, next) => {
   if (!isSupabaseConfigured) return next();
-  if (!req.user?.email || !env.adminEmails.includes(req.user.email.toLowerCase())) {
+  if (!req.user) return res.status(401).json({ error: 'Authentication required' });
+  if (req.user.email && env.adminEmails.includes(req.user.email.toLowerCase())) return next();
+  void (async () => {
+    const { data: profile, error } = supabase
+      ? await supabase.from('profiles').select('role').eq('id', req.user!.id).maybeSingle()
+      : { data: null, error: null };
+    if (error) return next(error);
+    if (profile?.role === 'admin') return next();
     return res.status(403).json({ error: 'Administrator access required' });
-  }
-  next();
+  })().catch(next);
 };
 
 export const requireStaff: RequestHandler = async (req, res, next) => {
   if (!isSupabaseConfigured) return next();
   if (!req.user) return res.status(403).json({ error: 'Staff access required' });
   if (env.adminEmails.includes((req.user.email ?? '').toLowerCase())) return next();
-  const { data: profile } = supabase ? await supabase.from('profiles').select('role').eq('id', req.user.id).maybeSingle() : { data: null };
+  const { data: profile, error } = supabase
+    ? await supabase.from('profiles').select('role').eq('id', req.user.id).maybeSingle()
+    : { data: null, error: null };
+  if (error) return next(error);
   if (profile?.role !== 'support' && profile?.role !== 'admin') {
     return res.status(403).json({ error: 'Staff access required' });
   }
