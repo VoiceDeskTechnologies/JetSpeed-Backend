@@ -14,9 +14,9 @@ freightAccountRouter.post('/register', requireAuth, async (req, res, next) => {
     const client = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
     const { data: profile, error } = await client.from('profiles').select('full_name,email,phone,identifier_code,pickup_location').eq('id', req.user!.id).single();
     if (error || !profile?.email || !profile.identifier_code) {
-      return res.status(422).json({ error: 'Your JetSpeed profile is missing an email or mailbox identifier.' });
+      return res.status(422).json({ error: 'Your Global Xend JA profile is missing an email or mailbox identifier.' });
     }
-    const names = String(profile.full_name || 'JetSpeed Customer').trim().split(/\s+/);
+    const names = String(profile.full_name || 'Global Xend JA Customer').trim().split(/\s+/);
     const result = await registerForwarderAccount({
       first_name: names[0],
       last_name: names.slice(1).join(' ') || names[0],

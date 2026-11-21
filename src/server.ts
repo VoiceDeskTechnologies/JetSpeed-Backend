@@ -1,3 +1,3 @@
 import { app } from './app';
 import { env } from './config/env';
-app.listen(env.port, () => console.info(`JetSpeed API listening on port ${env.port}`));
+app.listen(env.port, () => console.info(`Global Xend JA API listening on port ${env.port}`));

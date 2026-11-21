@@ -49,7 +49,7 @@ freightWebhookRouter.post(['/accounts', '/customers'], async (req, res) => {
       pickup_location: body.pickupLocation ?? 'Top Hill, St Elizabeth',
     }, { onConflict: 'email' }).select().single();
     if (pendingError) return res.status(422).json({ error: pendingError.message });
-    return res.status(202).json({ message: 'Customer registration stored pending JetSpeed signup.', pending_account: pending });
+    return res.status(202).json({ message: 'Customer registration stored pending Global Xend JA signup.', pending_account: pending });
   }
   const fullName = [body.first_name, body.last_name].filter(Boolean).join(' ').trim();
   const { data, error } = await client.from('profiles').upsert({

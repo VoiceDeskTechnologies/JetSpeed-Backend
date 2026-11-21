@@ -62,7 +62,7 @@ packageProcessingRouter.patch('/:packageId', requireStaff, async (req, res, next
         package_id: req.params.packageId,
         status,
         description: statusLabels[status],
-        location: status === 'received_at_miami' ? 'Miami hub' : status === 'in_transit' ? 'In transit' : 'JetSpeed network',
+        location: status === 'received_at_miami' ? 'Miami hub' : status === 'in_transit' ? 'In transit' : 'Global Xend JA network',
       });
       if (eventError) warnings.push(`Package updated, but tracking history could not be saved: ${eventError.message}`);
     }
@@ -105,7 +105,7 @@ packageProcessingRouter.patch('/:packageId', requireStaff, async (req, res, next
             const freight = packageRecord.freight_type === 'sea' ? 'Sea freight' : 'Air freight';
             const discount = Number(pricing.referral_discount_jmd || 0);
             const delivery = pricing.local_delivery_free === true ? 'FREE' : 'Standard delivery charges may apply';
-            const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#26354c"><div style="background:#071A38;padding:24px;text-align:center"><img src="${escapeHtml(env.emailLogoUrl)}" alt="JetSpeed Couriers" style="max-width:220px;background:#fff;border-radius:8px;padding:8px"></div><div style="padding:30px"><h1 style="color:#071A38">Your package is ready!</h1><p>Hi ${name},</p><p>Package <strong>${tracking}</strong> is ready for collection or delivery.</p><div style="background:#f5f7fb;padding:18px;border-radius:10px"><p><strong>Package weight:</strong> ${weight} lb</p><p><strong>Shipping type:</strong> ${freight}</p><p><strong>Shipping cost:</strong> ${amount(pricing.normal_shipping_charge_jmd)}</p>${discount > 0 ? `<p><strong>JetSpeed referral discount:</strong> -${amount(discount)}</p>` : ''}<p><strong>Local delivery:</strong> ${delivery}</p><p style="font-size:18px"><strong>Total amount due:</strong> ${amount(packageRecord.collection_amount_jmd)}</p></div><p>Please contact JetSpeed Couriers for payment and collection instructions.</p><p>Thank you for shipping with JetSpeed Couriers.<br><strong>You Shop. We Ship.</strong></p></div></div>`;
+            const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#26354c"><div style="background:#071A38;padding:24px;text-align:center"><img src="${escapeHtml(env.emailLogoUrl)}" alt="Global Xend JA" style="max-width:220px;background:#fff;border-radius:8px;padding:8px"></div><div style="padding:30px"><h1 style="color:#071A38">Your package is ready!</h1><p>Hi ${name},</p><p>Package <strong>${tracking}</strong> is ready for collection or delivery.</p><div style="background:#f5f7fb;padding:18px;border-radius:10px"><p><strong>Package weight:</strong> ${weight} lb</p><p><strong>Shipping type:</strong> ${freight}</p><p><strong>Shipping cost:</strong> ${amount(pricing.normal_shipping_charge_jmd)}</p>${discount > 0 ? `<p><strong>Global Xend JA referral discount:</strong> -${amount(discount)}</p>` : ''}<p><strong>Local delivery:</strong> ${delivery}</p><p style="font-size:18px"><strong>Total amount due:</strong> ${amount(packageRecord.collection_amount_jmd)}</p></div><p>Please contact Global Xend JA for payment and collection instructions.</p><p>Thank you for shipping with Global Xend JA.<br><strong>You Shop. We Ship.</strong></p></div></div>`;
             const response = await fetch('https://api.resend.com/emails', {
               method: 'POST',
               headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json' },

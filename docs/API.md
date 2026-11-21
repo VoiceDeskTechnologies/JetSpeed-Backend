@@ -1,4 +1,4 @@
-# JetSpeed Couriers API
+# Global Xend JA API
 
 The API is versioned under `/api/v1` and returns JSON. `GET /health` is unauthenticated.
 
