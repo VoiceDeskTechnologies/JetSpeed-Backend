@@ -10,31 +10,40 @@ packageProcessingRouter.patch('/:packageId', requireStaff, async (req, res, next
     if (!isSupabaseConfigured || !env.supabaseServiceRoleKey) {
       return res.status(503).json({ error: 'Package processing is not configured.' });
     }
-    const { status, weight_lb: weightLb, freight_type: freightType, custom_amount_jmd: customAmountJmd, item_description: itemDescription, delivery_fee_jmd: deliveryFeeJmd } = req.body as {
+    const { status, weight_lb: weightLb, freight_type: freightType, custom_amount_jmd: customAmountJmd, item_description: itemDescription, service_fee_override_jmd: serviceFeeOverrideJmd, customs_fee_jmd: customsFeeJmd, delivery_fee_jmd: deliveryFeeJmd, courier_tracking_number: courierTrackingNumber } = req.body as {
       status?: unknown;
       weight_lb?: unknown;
       freight_type?: unknown;
       custom_amount_jmd?: unknown;
       item_description?: unknown;
+      service_fee_override_jmd?: unknown;
+      customs_fee_jmd?: unknown;
       delivery_fee_jmd?: unknown;
+      courier_tracking_number?: unknown;
     };
     if (typeof status !== 'string' || typeof freightType !== 'string'
       || (weightLb !== null && weightLb !== undefined && (typeof weightLb !== 'number' || !Number.isFinite(weightLb)))
       || (customAmountJmd !== null && customAmountJmd !== undefined && (typeof customAmountJmd !== 'number' || !Number.isFinite(customAmountJmd) || customAmountJmd < 0))
+      || (serviceFeeOverrideJmd !== null && serviceFeeOverrideJmd !== undefined && (typeof serviceFeeOverrideJmd !== 'number' || !Number.isFinite(serviceFeeOverrideJmd) || serviceFeeOverrideJmd < 0))
       || typeof itemDescription !== 'string' || itemDescription.length > 500
+      || typeof courierTrackingNumber !== 'string' || courierTrackingNumber.length > 120
+      || typeof customsFeeJmd !== 'number' || !Number.isFinite(customsFeeJmd) || customsFeeJmd < 0
       || typeof deliveryFeeJmd !== 'number' || !Number.isFinite(deliveryFeeJmd) || deliveryFeeJmd < 0) {
-      return res.status(400).json({ error: 'A valid package status, weight, freight type, item description, and delivery fee are required.' });
+      return res.status(400).json({ error: 'A valid package status, weight, freight type, description, courier tracking number, and fee values are required.' });
     }
 
     const client = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
-    const { data: result, error } = await client.rpc('admin_update_package', {
+    const { data: result, error } = await client.rpc('admin_update_package_with_courier_tracking', {
       p_package_id: req.params.packageId,
       p_status: status,
       p_weight_lb: weightLb ?? null,
       p_freight_type: freightType,
       p_custom_amount_jmd: customAmountJmd ?? null,
       p_item_description: itemDescription.trim() || null,
+      p_service_fee_override_jmd: serviceFeeOverrideJmd ?? null,
+      p_customs_fee_jmd: customsFeeJmd,
       p_delivery_fee_jmd: deliveryFeeJmd,
+      p_courier_tracking_number: courierTrackingNumber.trim() || null,
       p_actor_id: req.user!.id,
     });
     if (error) return res.status(400).json({ error: error.message });

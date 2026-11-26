@@ -46,7 +46,7 @@ packageNotificationsRouter.post('/:packageId/ready-email', requireStaff, async (
     }
     const client = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
     const { data: packageRecord, error } = await client.from('packages')
-      .select('id,tracking_number,status,customer_id,customer_name,weight_lb,freight_type,collection_amount_jmd,custom_collection_amount_jmd,item_description,delivery_fee_jmd,pricing_breakdown')
+      .select('id,tracking_number,status,customer_id,customer_name,weight_lb,freight_type,collection_amount_jmd,custom_collection_amount_jmd,item_description,service_fee_override_jmd,customs_fee_jmd,delivery_fee_jmd,courier_tracking_number,pricing_breakdown')
       .eq('id', req.params.packageId)
       .single();
     if (error) {
@@ -87,17 +87,17 @@ packageNotificationsRouter.post('/:packageId/ready-email', requireStaff, async (
     const weight = Number(pricing.chargeable_weight_lb ?? packageRecord.weight_lb ?? 0);
     const freight = packageRecord.freight_type === 'sea' ? 'Sea freight' : 'Air freight';
     const discount = Number(pricing.referral_discount_jmd || 0);
-    const delivery = pricing.local_delivery_free === true ? 'FREE' : 'Standard delivery charges may apply';
     const courierCode = escapeHtml(profileResult.data?.identifier_code || 'Not available');
     const itemDescription = escapeHtml(packageRecord.item_description || 'Not provided');
-    const pricingDetails = packageRecord.custom_collection_amount_jmd != null
-      ? ''
-      : `<p><strong>Shipping cost:</strong> ${amount(pricing.normal_shipping_charge_jmd)}</p>${discount > 0 ? `<p><strong>Global Xend JA referral discount:</strong> -${amount(discount)}</p>` : ''}<p><strong>Local delivery:</strong> ${delivery}</p>`;
+    const courierTrackingLine = packageRecord.courier_tracking_number
+      ? `<p><strong>Courier tracking number:</strong> ${escapeHtml(packageRecord.courier_tracking_number)}</p>`
+      : '';
     const deliveryFee = Number(packageRecord.delivery_fee_jmd || 0);
-    const serviceFee = Number(pricing.normal_shipping_charge_jmd || 0);
+    const serviceFee = Number(pricing.service_fee_jmd ?? packageRecord.service_fee_override_jmd ?? pricing.normal_shipping_charge_jmd ?? 0);
+    const customsFee = Number(packageRecord.customs_fee_jmd ?? pricing.customs_fee_jmd ?? 0);
     const customFee = packageRecord.custom_collection_amount_jmd == null
       ? 0
-      : Number(packageRecord.custom_collection_amount_jmd) - Math.max(0, serviceFee + deliveryFee - discount);
+      : Number(packageRecord.custom_collection_amount_jmd) - Math.max(0, serviceFee + customsFee + deliveryFee - discount);
     const invoicePdf = await createShippingInvoicePdf({
       invoiceNumber: invoice.invoice_number,
       invoiceDate: invoice.created_at,
@@ -109,6 +109,7 @@ packageNotificationsRouter.post('/:packageId/ready-email', requireStaff, async (
       weightLb: weight,
       serviceFeeJmd: serviceFee,
       customFeeJmd: Number(pricing.custom_fee_adjustment_jmd ?? customFee),
+      customsFeeJmd: customsFee,
       deliveryFeeJmd: deliveryFee,
       discountJmd: discount,
       totalJmd: Number(invoice.amount),
@@ -116,7 +117,7 @@ packageNotificationsRouter.post('/:packageId/ready-email', requireStaff, async (
       whatsappNumber: settingText(settingValues.whatsapp_phone, '+1 876 336 4724'),
     });
     const invoiceFilename = `${String(packageRecord.tracking_number).replace(/[^a-zA-Z0-9._-]/g, '_')}-invoice.pdf`;
-    const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#26354c"><div style="background:#071A38;padding:24px;text-align:center"><img src="${escapeHtml(env.emailLogoUrl)}" alt="Global Xend JA" style="max-width:220px;background:#fff;border-radius:8px;padding:8px"></div><div style="padding:30px"><h1 style="color:#071A38">Your package is ready!</h1><p>Hi ${name},</p><p>Package <strong>${tracking}</strong> is ready for collection or delivery.</p><div style="background:#f5f7fb;padding:18px;border-radius:10px"><p><strong>Courier code:</strong> ${courierCode}</p><p><strong>Item description:</strong> ${itemDescription}</p><p><strong>Package weight:</strong> ${weight} lb</p><p><strong>Shipping type:</strong> ${freight}</p>${pricingDetails}<p style="font-size:18px"><strong>Total amount due:</strong> ${amount(packageRecord.collection_amount_jmd)}</p></div><p>Your PDF invoice is attached to this email.</p><p>Please contact Global Xend JA for payment and collection instructions.</p><p>Thank you for shipping with Global Xend JA.<br><strong>You Shop. We Ship.</strong></p></div></div>`;
+    const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#26354c"><div style="background:#071A38;padding:24px;text-align:center"><img src="${escapeHtml(env.emailLogoUrl)}" alt="Global Xend JA" style="max-width:220px;background:#fff;border-radius:8px;padding:8px"></div><div style="padding:30px"><h1 style="color:#071A38">Your package is ready!</h1><p>Hi ${name},</p><p>Package <strong>${tracking}</strong> is ready for collection or delivery.</p><div style="background:#f5f7fb;padding:18px;border-radius:10px"><p><strong>Courier code:</strong> ${courierCode}</p>${courierTrackingLine}<p><strong>Item description:</strong> ${itemDescription}</p><p><strong>Package weight:</strong> ${weight} lb</p><p><strong>Shipping type:</strong> ${freight}</p><p style="font-size:18px"><strong>Total amount due:</strong> ${amount(packageRecord.collection_amount_jmd)}</p></div><p>Your PDF invoice is attached to this email.</p><p>Please contact Global Xend JA for payment and collection instructions.</p><p>Thank you for shipping with Global Xend JA.<br><strong>You Shop. We Ship.</strong></p></div></div>`;
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json' },

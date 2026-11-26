@@ -13,7 +13,7 @@ packageInvoicesRouter.get('/:packageId/pdf', requireAuth, async (req, res, next)
     }
     const client = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
     const { data: packageRecord, error: packageError } = await client.from('packages')
-      .select('id,status,customer_id,customer_name,tracking_number,weight_lb,freight_type,collection_amount_jmd,custom_collection_amount_jmd,item_description,delivery_fee_jmd,pricing_breakdown,profiles:customer_id(full_name,identifier_code)')
+      .select('id,status,customer_id,customer_name,tracking_number,weight_lb,freight_type,collection_amount_jmd,custom_collection_amount_jmd,item_description,service_fee_override_jmd,customs_fee_jmd,delivery_fee_jmd,pricing_breakdown,profiles:customer_id(full_name,identifier_code)')
       .eq('id', req.params.packageId)
       .single();
     if (packageError) {
@@ -48,12 +48,13 @@ packageInvoicesRouter.get('/:packageId/pdf', requireAuth, async (req, res, next)
     const settingValues = Object.fromEntries((settings ?? []).map(setting => [setting.key, setting.value]));
     const settingText = (value: any, fallback: string) => String(value?.value ?? value ?? fallback).trim() || fallback;
     const pricing = (packageRecord.pricing_breakdown || {}) as Record<string, unknown>;
-    const serviceFee = Number(pricing.normal_shipping_charge_jmd || 0);
+    const serviceFee = Number(pricing.service_fee_jmd ?? packageRecord.service_fee_override_jmd ?? pricing.normal_shipping_charge_jmd ?? 0);
+    const customsFee = Number(packageRecord.customs_fee_jmd ?? pricing.customs_fee_jmd ?? 0);
     const discount = Number(pricing.referral_discount_jmd || 0);
     const deliveryFee = Number(packageRecord.delivery_fee_jmd || 0);
     const customFee = packageRecord.custom_collection_amount_jmd == null
       ? 0
-      : Number(packageRecord.custom_collection_amount_jmd) - Math.max(0, serviceFee + deliveryFee - discount);
+      : Number(packageRecord.custom_collection_amount_jmd) - Math.max(0, serviceFee + customsFee + deliveryFee - discount);
     const customerProfile = (packageRecord as any).profiles || {};
     const filename = `${String(packageRecord.tracking_number).replace(/[^a-zA-Z0-9._-]/g, '_')}-invoice.pdf`;
     const pdf = await createShippingInvoicePdf({
@@ -67,6 +68,7 @@ packageInvoicesRouter.get('/:packageId/pdf', requireAuth, async (req, res, next)
       weightLb: Number(pricing.chargeable_weight_lb ?? packageRecord.weight_lb ?? 0),
       serviceFeeJmd: serviceFee,
       customFeeJmd: Number(pricing.custom_fee_adjustment_jmd ?? customFee),
+      customsFeeJmd: customsFee,
       deliveryFeeJmd: deliveryFee,
       discountJmd: discount,
       totalJmd: Number(invoice.amount),

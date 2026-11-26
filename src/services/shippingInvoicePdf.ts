@@ -12,6 +12,7 @@ export type ShippingInvoicePdfData = {
   weightLb: number;
   serviceFeeJmd: number;
   customFeeJmd: number;
+  customsFeeJmd: number;
   deliveryFeeJmd: number;
   discountJmd: number;
   totalJmd: number;
@@ -89,6 +90,7 @@ export async function createShippingInvoicePdf(data: ShippingInvoicePdfData) {
       const rows = [
         ['Custom fee / adjustment', data.customFeeJmd],
         ['Service fee', data.serviceFeeJmd],
+        ['Customs fee', data.customsFeeJmd],
         ['Delivery fee', data.deliveryFeeJmd],
         ['Discount', data.discountJmd > 0 ? -data.discountJmd : 0],
       ] as const;
