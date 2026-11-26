@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { env, isSupabaseConfigured } from '../config/env';
 import { requireStaff } from '../middleware/auth';
+import { createShippingInvoicePdf } from '../services/shippingInvoicePdf';
 
 export const packageNotificationsRouter = Router();
 
@@ -45,7 +46,7 @@ packageNotificationsRouter.post('/:packageId/ready-email', requireStaff, async (
     }
     const client = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
     const { data: packageRecord, error } = await client.from('packages')
-      .select('tracking_number,status,customer_id,customer_name,weight_lb,freight_type,collection_amount_jmd,custom_collection_amount_jmd,pricing_breakdown')
+      .select('id,tracking_number,status,customer_id,customer_name,weight_lb,freight_type,collection_amount_jmd,custom_collection_amount_jmd,item_description,delivery_fee_jmd,pricing_breakdown')
       .eq('id', req.params.packageId)
       .single();
     if (error) {
@@ -61,7 +62,7 @@ packageNotificationsRouter.post('/:packageId/ready-email', requireStaff, async (
     }
     const [authResult, profileResult] = await Promise.all([
       client.auth.admin.getUserById(packageRecord.customer_id),
-      client.from('profiles').select('full_name,shipment_status_emails').eq('id', packageRecord.customer_id).single(),
+      client.from('profiles').select('full_name,identifier_code,shipment_status_emails').eq('id', packageRecord.customer_id).single(),
     ]);
     if (authResult.error) throw authResult.error;
     if (profileResult.error) throw profileResult.error;
@@ -70,6 +71,15 @@ packageNotificationsRouter.post('/:packageId/ready-email', requireStaff, async (
     }
     const email = authResult.data.user?.email;
     if (!email) return res.status(422).json({ error: 'Customer email is not available.' });
+    const [{ data: invoice, error: invoiceError }, { data: settings, error: settingsError }] = await Promise.all([
+      client.from('invoices').select('invoice_number,amount,created_at').eq('shipping_for_package_id', packageRecord.id).eq('shipping_invoice_current', true).maybeSingle(),
+      client.from('site_settings').select('key,value').in('key', ['support_email', 'whatsapp_phone']),
+    ]);
+    if (invoiceError) throw invoiceError;
+    if (settingsError) throw settingsError;
+    if (!invoice) return res.status(409).json({ error: 'The shipping invoice has not been generated yet.' });
+    const settingValues = Object.fromEntries((settings ?? []).map(setting => [setting.key, setting.value]));
+    const settingText = (value: any, fallback: string) => String(value?.value ?? value ?? fallback).trim() || fallback;
     const pricing = (packageRecord.pricing_breakdown || {}) as Record<string, unknown>;
     const amount = (value: unknown) => `JMD $${Number(value || 0).toLocaleString('en-JM')}`;
     const name = escapeHtml(profileResult.data?.full_name || packageRecord.customer_name || 'Customer');
@@ -78,14 +88,39 @@ packageNotificationsRouter.post('/:packageId/ready-email', requireStaff, async (
     const freight = packageRecord.freight_type === 'sea' ? 'Sea freight' : 'Air freight';
     const discount = Number(pricing.referral_discount_jmd || 0);
     const delivery = pricing.local_delivery_free === true ? 'FREE' : 'Standard delivery charges may apply';
+    const courierCode = escapeHtml(profileResult.data?.identifier_code || 'Not available');
+    const itemDescription = escapeHtml(packageRecord.item_description || 'Not provided');
     const pricingDetails = packageRecord.custom_collection_amount_jmd != null
       ? ''
       : `<p><strong>Shipping cost:</strong> ${amount(pricing.normal_shipping_charge_jmd)}</p>${discount > 0 ? `<p><strong>Global Xend JA referral discount:</strong> -${amount(discount)}</p>` : ''}<p><strong>Local delivery:</strong> ${delivery}</p>`;
-    const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#26354c"><div style="background:#071A38;padding:24px;text-align:center"><img src="${escapeHtml(env.emailLogoUrl)}" alt="Global Xend JA" style="max-width:220px;background:#fff;border-radius:8px;padding:8px"></div><div style="padding:30px"><h1 style="color:#071A38">Your package is ready!</h1><p>Hi ${name},</p><p>Package <strong>${tracking}</strong> is ready for collection or delivery.</p><div style="background:#f5f7fb;padding:18px;border-radius:10px"><p><strong>Package weight:</strong> ${weight} lb</p><p><strong>Shipping type:</strong> ${freight}</p>${pricingDetails}<p style="font-size:18px"><strong>Total amount due:</strong> ${amount(packageRecord.collection_amount_jmd)}</p></div><p>Please contact Global Xend JA for payment and collection instructions.</p><p>Thank you for shipping with Global Xend JA.<br><strong>You Shop. We Ship.</strong></p></div></div>`;
+    const deliveryFee = Number(packageRecord.delivery_fee_jmd || 0);
+    const serviceFee = Number(pricing.normal_shipping_charge_jmd || 0);
+    const customFee = packageRecord.custom_collection_amount_jmd == null
+      ? 0
+      : Number(packageRecord.custom_collection_amount_jmd) - Math.max(0, serviceFee + deliveryFee - discount);
+    const invoicePdf = await createShippingInvoicePdf({
+      invoiceNumber: invoice.invoice_number,
+      invoiceDate: invoice.created_at,
+      customerName: profileResult.data?.full_name || packageRecord.customer_name || 'Customer',
+      courierCode: profileResult.data?.identifier_code || 'Not available',
+      trackingNumber: packageRecord.tracking_number,
+      itemDescription: packageRecord.item_description,
+      freightType: freight,
+      weightLb: weight,
+      serviceFeeJmd: serviceFee,
+      customFeeJmd: Number(pricing.custom_fee_adjustment_jmd ?? customFee),
+      deliveryFeeJmd: deliveryFee,
+      discountJmd: discount,
+      totalJmd: Number(invoice.amount),
+      supportEmail: settingText(settingValues.support_email, 'info@globalxendja.com'),
+      whatsappNumber: settingText(settingValues.whatsapp_phone, '+1 876 336 4724'),
+    });
+    const invoiceFilename = `${String(packageRecord.tracking_number).replace(/[^a-zA-Z0-9._-]/g, '_')}-invoice.pdf`;
+    const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#26354c"><div style="background:#071A38;padding:24px;text-align:center"><img src="${escapeHtml(env.emailLogoUrl)}" alt="Global Xend JA" style="max-width:220px;background:#fff;border-radius:8px;padding:8px"></div><div style="padding:30px"><h1 style="color:#071A38">Your package is ready!</h1><p>Hi ${name},</p><p>Package <strong>${tracking}</strong> is ready for collection or delivery.</p><div style="background:#f5f7fb;padding:18px;border-radius:10px"><p><strong>Courier code:</strong> ${courierCode}</p><p><strong>Item description:</strong> ${itemDescription}</p><p><strong>Package weight:</strong> ${weight} lb</p><p><strong>Shipping type:</strong> ${freight}</p>${pricingDetails}<p style="font-size:18px"><strong>Total amount due:</strong> ${amount(packageRecord.collection_amount_jmd)}</p></div><p>Your PDF invoice is attached to this email.</p><p>Please contact Global Xend JA for payment and collection instructions.</p><p>Thank you for shipping with Global Xend JA.<br><strong>You Shop. We Ship.</strong></p></div></div>`;
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.resendApiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: env.emailFrom, to: [email], subject: `Your package ${packageRecord.tracking_number} is ready`, html }),
+      body: JSON.stringify({ from: env.emailFrom, to: [email], subject: `Your package ${packageRecord.tracking_number} is ready`, html, attachments: [{ filename: invoiceFilename, content: invoicePdf.toString('base64'), content_type: 'application/pdf' }] }),
     });
     if (!response.ok) return res.status(502).json({ error: 'Email provider rejected the ready-for-pickup notification.' });
     return res.status(202).json({ sent: true });

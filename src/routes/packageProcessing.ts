@@ -10,16 +10,20 @@ packageProcessingRouter.patch('/:packageId', requireStaff, async (req, res, next
     if (!isSupabaseConfigured || !env.supabaseServiceRoleKey) {
       return res.status(503).json({ error: 'Package processing is not configured.' });
     }
-    const { status, weight_lb: weightLb, freight_type: freightType, custom_amount_jmd: customAmountJmd } = req.body as {
+    const { status, weight_lb: weightLb, freight_type: freightType, custom_amount_jmd: customAmountJmd, item_description: itemDescription, delivery_fee_jmd: deliveryFeeJmd } = req.body as {
       status?: unknown;
       weight_lb?: unknown;
       freight_type?: unknown;
       custom_amount_jmd?: unknown;
+      item_description?: unknown;
+      delivery_fee_jmd?: unknown;
     };
     if (typeof status !== 'string' || typeof freightType !== 'string'
       || (weightLb !== null && weightLb !== undefined && (typeof weightLb !== 'number' || !Number.isFinite(weightLb)))
-      || (customAmountJmd !== null && customAmountJmd !== undefined && (typeof customAmountJmd !== 'number' || !Number.isFinite(customAmountJmd) || customAmountJmd < 0))) {
-      return res.status(400).json({ error: 'A valid package status, weight, freight type, and custom amount are required.' });
+      || (customAmountJmd !== null && customAmountJmd !== undefined && (typeof customAmountJmd !== 'number' || !Number.isFinite(customAmountJmd) || customAmountJmd < 0))
+      || typeof itemDescription !== 'string' || itemDescription.length > 500
+      || typeof deliveryFeeJmd !== 'number' || !Number.isFinite(deliveryFeeJmd) || deliveryFeeJmd < 0) {
+      return res.status(400).json({ error: 'A valid package status, weight, freight type, item description, and delivery fee are required.' });
     }
 
     const client = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
@@ -29,6 +33,8 @@ packageProcessingRouter.patch('/:packageId', requireStaff, async (req, res, next
       p_weight_lb: weightLb ?? null,
       p_freight_type: freightType,
       p_custom_amount_jmd: customAmountJmd ?? null,
+      p_item_description: itemDescription.trim() || null,
+      p_delivery_fee_jmd: deliveryFeeJmd,
       p_actor_id: req.user!.id,
     });
     if (error) return res.status(400).json({ error: error.message });
