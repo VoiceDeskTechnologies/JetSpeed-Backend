@@ -17,9 +17,11 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "helmet": "^8.0.0",
+    "pdfkit": "^0.21.0",
     "typescript": "^5.7.2"
   },
   "devDependencies": {
+    "@types/pdfkit": "^0.17.7",
     "tsx": "^4.19.2"
   }
 }
