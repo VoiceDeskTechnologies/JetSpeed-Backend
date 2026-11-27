@@ -1,12 +1,57 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { env, isSupabaseConfigured } from '../config/env';
-import { requireAuth } from '../middleware/auth';
+import { requireStaff } from '../middleware/auth';
 import { createShippingInvoicePdf } from '../services/shippingInvoicePdf';
 
 export const packageInvoicesRouter = Router();
+const shareLinkLifetimeSeconds = 7 * 24 * 60 * 60;
 
-packageInvoicesRouter.get('/:packageId/pdf', requireAuth, async (req, res, next) => {
+function signShareLink(packageId: string, expires: number) {
+  return createHmac('sha256', env.supabaseServiceRoleKey!)
+    .update(`${packageId}:${expires}`)
+    .digest('hex');
+}
+
+function hasValidShareToken(packageId: string, expiresValue: unknown, tokenValue: unknown) {
+  if (typeof expiresValue !== 'string' || typeof tokenValue !== 'string' || !/^[a-f0-9]{64}$/i.test(tokenValue)) return false;
+  const expires = Number(expiresValue);
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(expires) || expires <= now || expires > now + shareLinkLifetimeSeconds) return false;
+  return timingSafeEqual(Buffer.from(signShareLink(packageId, expires), 'hex'), Buffer.from(tokenValue, 'hex'));
+}
+
+packageInvoicesRouter.post('/:packageId/share-link', requireStaff, async (req, res, next) => {
+  try {
+    if (!isSupabaseConfigured || !env.supabaseServiceRoleKey) {
+      return res.status(503).json({ error: 'Invoice sharing is not configured.' });
+    }
+    const client = createClient(env.supabaseUrl!, env.supabaseServiceRoleKey);
+    const { data: packageRecord, error: packageError } = await client.from('packages')
+      .select('id,status')
+      .eq('id', req.params.packageId)
+      .maybeSingle();
+    if (packageError) throw packageError;
+    if (!packageRecord) return res.status(404).json({ error: 'Package not found.' });
+    if (packageRecord.status !== 'ready_for_pickup' && packageRecord.status !== 'delivered') {
+      return res.status(409).json({ error: 'The invoice link is available when the package is ready for pickup.' });
+    }
+    const { data: invoice, error: invoiceError } = await client.from('invoices')
+      .select('id')
+      .eq('shipping_for_package_id', packageRecord.id)
+      .eq('shipping_invoice_current', true)
+      .maybeSingle();
+    if (invoiceError) throw invoiceError;
+    if (!invoice) return res.status(409).json({ error: 'The shipping invoice has not been generated yet.' });
+    const expires = Math.floor(Date.now() / 1000) + shareLinkLifetimeSeconds;
+    return res.json({ expires, token: signShareLink(packageRecord.id, expires) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+packageInvoicesRouter.get('/:packageId/pdf', async (req, res, next) => {
   try {
     if (!isSupabaseConfigured || !env.supabaseServiceRoleKey) {
       return res.status(503).json({ error: 'Invoice delivery is not configured.' });
@@ -21,12 +66,16 @@ packageInvoicesRouter.get('/:packageId/pdf', requireAuth, async (req, res, next)
       throw packageError;
     }
     if (!packageRecord) return res.status(404).json({ error: 'Package not found.' });
-    if (packageRecord.customer_id !== req.user!.id) {
-      if (!env.adminEmails.includes((req.user!.email ?? '').toLowerCase())) {
-        const { data: profile, error } = await client.from('profiles').select('role').eq('id', req.user!.id).maybeSingle();
-        if (error) throw error;
-        if (profile?.role !== 'admin' && profile?.role !== 'support') {
-          return res.status(403).json({ error: 'You do not have access to this package invoice.' });
+    const hasSharedAccess = hasValidShareToken(packageRecord.id, req.query.expires, req.query.token);
+    if (!hasSharedAccess) {
+      if (!req.user) return res.status(401).json({ error: 'Authentication required or invoice link expired.' });
+      if (packageRecord.customer_id !== req.user.id) {
+        if (!env.adminEmails.includes((req.user.email ?? '').toLowerCase())) {
+          const { data: profile, error } = await client.from('profiles').select('role').eq('id', req.user.id).maybeSingle();
+          if (error) throw error;
+          if (profile?.role !== 'admin' && profile?.role !== 'support') {
+            return res.status(403).json({ error: 'You do not have access to this package invoice.' });
+          }
         }
       }
     }
